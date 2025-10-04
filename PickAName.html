@@ -1,0 +1,1438 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ce groupe mérite un nom</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Utilisation de PapaParse pour l'export et l'import CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap");
+      body {
+        font-family: "Inter", sans-serif;
+        background-color: #f7f9fc;
+      }
+      .name-button {
+        transition: all 0.2s ease-in-out;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+          0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      }
+      .name-button:not([disabled]):hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -4px rgba(0, 0, 0, 0.1);
+      }
+      /* Custom scrollbar styling (optional, for better aesthetics) */
+      .overflow-y-auto::-webkit-scrollbar {
+        width: 8px;
+      }
+      .overflow-y-auto::-webkit-scrollbar-thumb {
+        background-color: #cbd5e1; /* gray-300 */
+        border-radius: 4px;
+      }
+      /* Style pour les boutons désactivés (plus fort que les classes Tailwind par défaut) */
+      .cursor-not-allowed {
+        cursor: not-allowed !important;
+      }
+
+      /* --- Styles pour les Tooltips des boutons et du classement (Position fixe par JS) --- */
+
+      /* Le style du tooltip principal géré par JS */
+      #tooltip {
+        z-index: 9999;
+        position: fixed;
+        transition: opacity 0.2s, visibility 0.2s;
+        pointer-events: none;
+      }
+
+      /* Le contenu pour l'apparence (partagé pour tous les tooltips) */
+      .tooltip-content-style {
+        background-color: rgb(31 41 55); /* gray-800 */
+        color: white;
+        font-size: 0.875rem; /* text-sm */
+        font-weight: 600; /* Semi-bold */
+        padding: 0.5rem 0.75rem;
+        border-radius: 0.5rem;
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+          0 4px 6px -4px rgba(0, 0, 0, 0.1);
+        white-space: nowrap;
+      }
+
+      /* Styles pour les tooltips des boutons désactivés (pour le message "Historique vide") */
+      .is-disabled-target .tooltip-content-style {
+        font-size: 0.75rem; /* text-xs */
+        padding: 0.5rem;
+      }
+
+      /* --- Activation des tooltips pour les boutons désactivés via CSS --- */
+      /* Les wrappers des boutons désactivés ont la classe 'is-disabled-target'. */
+      .is-disabled-target:hover #json-tooltip,
+      .is-disabled-target:hover #csv-tooltip,
+      .is-disabled-target:hover #reset-tooltip {
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen p-4 md:p-8 flex items-start justify-center">
+    <!-- Conteneur global de l'infobulle (positionné en fixe pour la vue, géré par JS) -->
+    <div
+      id="tooltip"
+      class="fixed hidden opacity-0 transition-opacity duration-150 ease-in-out"
+    >
+      <div id="tooltip-content" class="tooltip-content-style">
+        <!-- Le texte de l'infobulle sera inséré ici par JavaScript -->
+      </div>
+    </div>
+
+    <!-- Modal de Confirmation de Réinitialisation des votes -->
+    <div
+      id="reset-modal"
+      class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden flex items-center justify-center p-4 z-50"
+    >
+      <div
+        class="bg-white rounded-xl p-8 max-w-lg w-full shadow-2xl transform transition-all"
+      >
+        <h3 class="text-2xl font-bold text-red-700 mb-4">
+          Réinitialisation des votes
+        </h3>
+        <p class="text-gray-600 mb-6">
+          T'es sûr de vouloir supprimer tous les votes enregistrés ? Cette
+          action est irréversible.
+        </p>
+        <div class="flex justify-end space-x-4">
+          <button
+            id="cancel-reset-btn"
+            class="px-5 py-2 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 transition duration-150 shadow-md"
+          >
+            Oula, non ! 😬
+          </button>
+          <button
+            id="confirm-reset-btn"
+            class="px-5 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition duration-150 shadow-md"
+          >
+            Oui, jette-moi tout ça... 🙄
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Confirmation de Réinitialisation complète -->
+    <div
+      id="full-reset-modal"
+      class="fixed inset-0 bg-gray-900 bg-opacity-75 hidden flex items-center justify-center p-4 z-50"
+    >
+      <div
+        class="bg-white rounded-xl p-8 max-w-lg w-full shadow-2xl transform transition-all"
+      >
+        <h3 class="text-2xl font-bold text-red-700 mb-4">
+          Réinitialisation complète
+        </h3>
+        <p class="text-gray-600 mb-6">
+          T'es sûr de vouloir supprimer tous les votes
+          <b>ET les noms</b> enregistrés ? Cette action est irréversible.
+        </p>
+        <div class="flex justify-end space-x-4">
+          <button
+            id="cancel-full-reset-btn"
+            class="px-5 py-2 bg-gray-200 text-gray-800 font-medium rounded-lg hover:bg-gray-300 transition duration-150 shadow-md"
+          >
+            Oula, non ! 😬
+          </button>
+          <button
+            id="confirm-full-reset-btn"
+            class="px-5 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition duration-150 shadow-md"
+          >
+            Oui, jette-moi tout ça... 🙄
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Wrapper pour le Contenu et le Classement (Grid sur desktop) -->
+    <div class="w-full max-w-7xl grid grid-cols-1 lg:grid-cols-5 gap-8">
+      <!-- Colonne Principale (Vote et Export) -->
+      <div
+        class="lg:col-span-3 bg-white p-6 md:p-10 rounded-xl shadow-2xl border border-gray-100"
+      >
+        <header class="text-center mb-10">
+          <h1 class="text-4xl font-extrabold text-gray-900 mb-2">
+            🔥 Ce groupe mérite un nom 🔥
+          </h1>
+          <p class="text-gray-500 text-lg">
+            Trouvons-le parce que "Chaipa" ça pue du cul et y en a marre
+          </p>
+        </header>
+
+        <!-- Boîte de Notification -->
+        <div
+          id="notification-box"
+          class="hidden fixed top-4 right-4 p-4 rounded-lg text-white font-semibold shadow-xl transition-all duration-300 z-50"
+        >
+          Message
+        </div>
+
+        <div
+          id="initial-state-wrapper"
+          class="border border-red-300 bg-red-50 p-4 rounded-lg"
+        >
+          <p class="text-center text-red-500 font-semibold">
+            C'est vide chef, commence par importer une liste de noms
+          </p>
+        </div>
+
+        <!-- Zone de Match -->
+        <main id="match-wrapper" class="flex flex-col items-center">
+          <p class="text-2xl font-bold text-gray-700 mb-6">
+            Qu'est-ce qu'il préfère ?
+          </p>
+
+          <div class="flex flex-col md:flex-row gap-6 w-full max-w-xl">
+            <!-- Bouton Nom A -->
+            <button
+              id="name-a-btn"
+              class="name-button flex-1 px-6 py-8 text-2xl font-bold text-white bg-sky-600 rounded-xl hover:bg-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-500 focus:ring-opacity-50 disabled:opacity-75"
+              disabled
+            >
+              Chargement...
+            </button>
+
+            <div
+              class="flex items-center justify-center text-3xl font-extrabold text-gray-400"
+            >
+              OU
+            </div>
+
+            <!-- Bouton Nom B -->
+            <button
+              id="name-b-btn"
+              class="name-button flex-1 px-6 py-8 text-2xl font-bold text-white bg-sky-600 rounded-xl hover:bg-sky-700 focus:outline-none focus:ring-4 focus:ring-sky-500 focus:ring-opacity-50 disabled:opacity-75"
+              disabled
+            >
+              Chargement...
+            </button>
+          </div>
+
+          <p class="mt-4 text-sm text-center text-gray-600">
+            Les votes sont enregistrés automatiquement dans ton navigateur mais
+            hésite pas à les exporter quand même quand t'as terminé, on sait
+            jamais
+          </p>
+        </main>
+
+        <!-- Zone d'Exportation & d'Importation des Données -->
+        <section id="data-management-wrapper" class="text-center">
+          <hr class="my-10 border-gray-200" />
+          <h2 class="text-3xl font-extrabold text-gray-900 mb-6">
+            🛠️ Gestion des données
+          </h2>
+
+          <!-- EXPORTATION -->
+          <div class="mb-8 border-b pb-6">
+            <h3
+              class="text-2xl font-semibold text-gray-800 mb-4"
+              id="export-title"
+            >
+              Exporter l'historique (<span
+                id="vote-count-text"
+                class="font-bold text-sky-600"
+                >0 vote</span
+              >)
+            </h3>
+            <p class="text-gray-600 mb-6">
+              Récupère l'historique de tes votes pour les sauvegarder ou les
+              partager.
+            </p>
+
+            <div class="flex flex-col sm:flex-row justify-center gap-4">
+              <!-- Wrapper 1: Export JSON (class group/relative pour le trigger du tooltip CSS) -->
+              <div
+                id="export-json-wrapper"
+                class="relative group is-disabled-target"
+              >
+                <button
+                  id="export-json-btn"
+                  class="px-6 py-3 bg-gray-800 text-white font-medium rounded-lg transition duration-150 shadow-md"
+                >
+                  Télécharger en JSON
+                </button>
+                <!-- Tooltip pour bouton désactivé (opacity-0 invisible est utilisé pour la transition) -->
+                <div
+                  id="json-tooltip"
+                  class="absolute opacity-0 invisible transition duration-150 ease-in-out bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none"
+                >
+                  <div class="tooltip-content-style text-xs p-2">
+                    L'historique des votes est vide.
+                  </div>
+                </div>
+              </div>
+
+              <!-- Wrapper 2: Export CSV -->
+              <div
+                id="export-csv-wrapper"
+                class="relative group is-disabled-target"
+              >
+                <button
+                  id="export-csv-btn"
+                  class="px-6 py-3 bg-green-600 text-white font-medium rounded-lg transition duration-150 shadow-md"
+                >
+                  Télécharger en CSV
+                </button>
+                <!-- Tooltip pour bouton désactivé -->
+                <div
+                  id="csv-tooltip"
+                  class="absolute opacity-0 invisible transition duration-150 ease-in-out bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none"
+                >
+                  <div class="tooltip-content-style text-xs p-2">
+                    L'historique des votes est vide.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- IMPORTATION (Historique seulement) -->
+          <div>
+            <h3 class="text-2xl font-semibold text-gray-800 mb-4">
+              Importer un historique de votes
+            </h3>
+            <div class="space-y-4">
+              <!-- Import Historique -->
+              <div
+                class="p-4 border border-purple-200 bg-purple-50 rounded-xl text-left"
+              >
+                <label
+                  class="block text-lg font-medium text-purple-800 mb-2"
+                  for="import-history-file"
+                >
+                  Ajouter des votes à l'historique actuel
+                </label>
+                <input
+                  type="file"
+                  id="import-history-file"
+                  accept=".json,.csv"
+                  class="cursor-pointer w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-purple-500 file:text-white hover:file:bg-purple-600 transition duration-150"
+                />
+                <p class="text-xs text-purple-600 mt-2">
+                  Choisis un fichier au format JSON ou CSV (avec les colonnes
+                  'winner' et 'loser'). Les votes importés seront ajoutés à
+                  l'historique actuel.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Zone de Réinitialisation -->
+          <div class="mt-8 pt-6 border-t border-red-200">
+            <h3 class="text-2xl font-semibold text-red-800 mb-4">
+              ⚠️ Réinitialisation ⚠️
+            </h3>
+            <p class="text-gray-600 mb-4">
+              Si tu veux repartir de zéro et supprimer l'historique.
+            </p>
+            <!-- Wrapper 3: History Reset Button -->
+            <div
+              id="reset-history-wrapper"
+              class="relative group mx-auto my-4 w-full sm:w-auto is-disabled-target"
+            >
+              <button
+                id="reset-history-btn"
+                class="px-6 py-3 bg-red-600 text-white font-medium rounded-lg transition duration-150 shadow-md w-full sm:w-auto"
+              >
+                Supprimer les votes
+              </button>
+              <!-- Tooltip pour bouton désactivé -->
+              <div
+                id="reset-tooltip"
+                class="absolute opacity-0 invisible transition duration-150 ease-in-out bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none"
+              >
+                <div class="tooltip-content-style text-xs p-2">
+                  L'historique des votes est vide.
+                </div>
+              </div>
+            </div>
+
+            <!-- Wrapper 3: Full Reset Button -->
+            <div
+              id="full-reset-history-wrapper"
+              class="relative group mx-auto my-4 w-full sm:w-auto is-disabled-target"
+            >
+              <button
+                id="full-reset-history-btn"
+                class="px-6 py-3 bg-red-600 text-white font-medium rounded-lg transition duration-150 shadow-md w-full sm:w-auto"
+              >
+                Supprimer les votes et les noms
+              </button>
+              <!-- Tooltip pour bouton désactivé -->
+              <div
+                id="reset-tooltip"
+                class="absolute opacity-0 invisible transition duration-150 ease-in-out bottom-full left-1/2 transform -translate-x-1/2 mb-2 pointer-events-none"
+              >
+                <div class="tooltip-content-style text-xs p-2">
+                  L'historique des votes et la liste de noms est vide.
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Colonne de Classement (Affichage en temps réel) -->
+      <div
+        class="lg:col-span-2 bg-white p-6 md:p-8 rounded-xl shadow-2xl border border-gray-100 h-fit"
+      >
+        <h2 class="text-2xl font-extrabold text-gray-900 mb-4">
+          🏆 Classement en temps réel
+        </h2>
+
+        <div id="leaderboard-wrapper" class="pt-4 border-t">
+          <!-- Sélecteur de Tri -->
+          <div id="sort-selector-wrapper" class="mb-6">
+            <label
+              for="sort-selector"
+              class="block text-sm font-medium text-gray-700 mb-1"
+              >Trier par :</label
+            >
+            <select
+              id="sort-selector"
+              class="w-full p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-sky-500 focus:border-sky-50"
+            >
+              <option value="winRatio">Ratio V/D</option>
+              <option value="total">Total des votes</option>
+              <option value="wins">Victoires (V)</option>
+              <option value="losses">Défaites (D)</option>
+            </select>
+          </div>
+
+          <!-- Conteneur de défilement pour le classement -->
+          <div class="max-h-[330px] overflow-y-auto pr-2">
+            <div id="leaderboard-content" class="space-y-2">
+              <!-- Le classement sera inséré ici par JavaScript -->
+            </div>
+          </div>
+
+          <!-- Légende du tri -->
+          <p
+            id="leaderboard-footer"
+            class="mt-4 text-xs text-gray-600 text-center border-b pb-4 mb-4"
+          >
+            Classé par Ratio V/D (ratio = V / (V+D)).
+          </p>
+        </div>
+
+        <!-- Import Noms (NOUVELLE POSITION: tout en bas de la colonne) -->
+        <div class="p-4 border border-blue-200 bg-blue-50 rounded-xl text-left">
+          <label
+            class="block text-lg font-medium text-blue-800 mb-2"
+            for="import-names-file"
+          >
+            Importer une nouvelle liste de noms
+          </label>
+          <input
+            type="file"
+            id="import-names-file"
+            accept=".txt,.csv"
+            class="cursor-pointer w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-500 file:text-white hover:file:bg-blue-600 transition duration-150"
+          />
+          <p class="text-xs text-blue-600 mt-2">
+            Choisis une liste au format TXT ou CSV. Attention : Ça va
+            réinitialiser l'historique des votes actuel.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      // --- Logique du Tooltip (Utilisé pour le classement uniquement) ---
+      const tooltip = document.getElementById("tooltip");
+      const tooltipContent = document.getElementById("tooltip-content");
+      // Espacement en pixels entre l'élément survolé et l'infobulle
+      const PADDING_TOP = 10;
+
+      // Variable pour gérer le délai de masquage
+      let tooltipHideTimeout;
+
+      /**
+       * Affiche l'infobulle (tooltip) au-dessus de l'élément survolé.
+       * @param {HTMLElement} element L'élément DOM qui a déclenché l'événement.
+       * @param {string} name Le texte à afficher dans l'infobulle.
+       */
+      function showTooltip(element, name) {
+        // Annule tout délai de masquage en attente pour empêcher le clignotement
+        clearTimeout(tooltipHideTimeout);
+
+        // S'assurer que le contenu existe et n'est pas vide
+        if (!name) return hideTooltip(0); // Cache immédiatement si vide
+
+        // 1. Mise à jour du contenu
+        tooltipContent.textContent = name;
+
+        // 2. Affichage de l'infobulle
+        tooltip.classList.remove("hidden", "opacity-0");
+        tooltip.classList.add("opacity-100");
+
+        // 3. Calcul de la position
+        const rect = element.getBoundingClientRect();
+        // Forcer le navigateur à recalculer la taille du tooltip avec le nouveau contenu
+        const tooltipRect = tooltip.getBoundingClientRect();
+
+        // Calcul de la position X (centrée par rapport à l'élément)
+        let xPos = rect.left + rect.width / 2 - tooltipRect.width / 2;
+
+        // Calcul de la position Y (au-dessus de l'élément, avec l'espacement)
+        let yPos = rect.top - tooltipRect.height - PADDING_TOP;
+
+        // Gestion des bords de l'écran (pour ne pas sortir à gauche/droite)
+        const viewportWidth = window.innerWidth;
+        if (xPos < 5) xPos = 5;
+        if (xPos + tooltipRect.width > viewportWidth - 5)
+          xPos = viewportWidth - tooltipRect.width - 5;
+
+        // Application des styles de positionnement
+        tooltip.style.left = `${xPos}px`;
+        tooltip.style.top = `${yPos}px`;
+
+        // Si le tooltip est trop haut (yPos < 0), on le masque pour éviter un comportement étrange
+        if (yPos < 0) {
+          hideTooltip(0);
+        }
+      }
+
+      /**
+       * Masque l'infobulle après un court délai pour éviter la disparition rapide.
+       * @param {number} delayms Le délai avant de commencer le masquage.
+       */
+      function hideTooltip(delayms = 200) {
+        // Programme le masquage après le délai spécifié
+        tooltipHideTimeout = setTimeout(() => {
+          // Début de l'animation de fondu
+          tooltip.classList.add("opacity-0");
+          tooltip.classList.remove("opacity-100");
+
+          // Masque l'élément après la fin de l'animation CSS (200ms pour la transition)
+          setTimeout(() => {
+            tooltip.classList.add("hidden");
+          }, 200);
+        }, delayms);
+      }
+
+      // --- Fin Logique du Tooltip ---
+
+      // Liste de noms de groupe par défaut. Sera écrasée par localStorage si des données existent.
+      const DEFAULT_NAME_LIST = ["Nom 1", "Nom 2", "Nom 3", "Nom 4", "Nom 5"];
+
+      // La liste de noms de travail. Doit être 'let' pour être modifiée.
+      let NAME_LIST = [];
+
+      // --- Stockage Local des Votes et Scores ---
+      let localVotes = [];
+      // Structure pour stocker les scores: { nom: { wins: 0, losses: 0, total: 0 } }
+      let scores = {};
+
+      // --- Fonctions de Persistance ---
+
+      /**
+       * Sauvegarde la liste de noms et l'historique des votes dans localStorage.
+       */
+      function saveData() {
+        try {
+          // Sauvegarder localVotes (qui peut être vide si l'historique a été réinitialisé)
+          localStorage.setItem("bandNameVotes", JSON.stringify(localVotes));
+          localStorage.setItem("bandNameList", JSON.stringify(NAME_LIST));
+          updateExportControls();
+        } catch (e) {
+          console.error("Erreur lors de la sauvegarde dans localStorage:", e);
+          showNotification(
+            "Impossible de sauvegarder les données localement.",
+            "error"
+          );
+        }
+      }
+
+      /**
+       * Met à jour l'affichage du compteur de votes dans le bandeau d'exportation
+       * avec la gestion du singulier/pluriel.
+       */
+      function updateVoteCountDisplay() {
+        const count = localVotes.length;
+        const textElement = document.getElementById("vote-count-text");
+        if (textElement) {
+          const suffix = count <= 1 ? "vote" : "votes";
+          textElement.textContent = `${count} ${suffix}`;
+        }
+      }
+
+      /**
+       * Charge les données depuis localStorage, met à jour NAME_LIST et localVotes, puis recalcule les scores.
+       */
+      function loadData() {
+        // 1. Charger la liste de noms
+        const savedNameList = localStorage.getItem("bandNameList");
+        if (savedNameList) {
+          try {
+            NAME_LIST.splice(0, NAME_LIST.length, ...JSON.parse(savedNameList));
+          } catch (e) {
+            console.error(
+              "Erreur de parsing de la liste de noms. Utilisation de la liste par défaut.",
+              e
+            );
+            NAME_LIST = [];
+          }
+        } else {
+          NAME_LIST = [];
+        }
+
+        // 2. Initialiser les scores AVANT de charger les votes
+        initializeScores();
+
+        // 3. Charger l'historique des votes
+        const savedVotes = localStorage.getItem("bandNameVotes");
+        if (savedVotes) {
+          try {
+            localVotes = JSON.parse(savedVotes);
+          } catch (e) {
+            console.error(
+              "Erreur de parsing des votes. Réinitialisation des votes.",
+              e
+            );
+            localVotes = [];
+          }
+        } else {
+          localVotes = [];
+        }
+
+        // 4. Recalculer les scores à partir des votes chargés
+        localVotes.forEach((vote) => {
+          const { winner, loser } = vote;
+
+          // S'assurer que le nom existe dans la structure de scores (même s'il n'est plus dans NAME_LIST)
+          if (!scores[winner])
+            scores[winner] = { wins: 0, losses: 0, total: 0 };
+          if (!scores[loser]) scores[loser] = { wins: 0, losses: 0, total: 0 };
+
+          scores[winner].wins++;
+          scores[winner].total++;
+          scores[loser].losses++;
+          scores[loser].total++;
+        });
+
+        // 5. Mise à jour de l'affichage du compteur
+        updateVoteCountDisplay();
+      }
+
+      /**
+       * Initialise l'objet scores pour s'assurer que tous les noms de la NAME_LIST courante sont présents.
+       */
+      function initializeScores() {
+        scores = {};
+        NAME_LIST.forEach((name) => {
+          scores[name] = { wins: 0, losses: 0, total: 0 };
+        });
+      }
+
+      // --- Contrôle des boutons (maintenant avec gestion des tooltips CSS) ---
+
+      /**
+       * Active/désactive les boutons d'export et de réinitialisation si l'historique des votes est vide.
+       * Ajoute/retire la classe 'is-disabled-target' au wrapper pour activer le tooltip CSS.
+       */
+      function updateExportControls() {
+        const hasNoVote = localVotes.length === 0;
+        const hasNoName = NAME_LIST.length === 0;
+
+        const actionItems = [
+          {
+            btn: document.getElementById("export-json-btn"),
+            wrapper: document.getElementById("export-json-wrapper"),
+          },
+          {
+            btn: document.getElementById("export-csv-btn"),
+            wrapper: document.getElementById("export-csv-wrapper"),
+          },
+          {
+            btn: document.getElementById("reset-history-btn"),
+            wrapper: document.getElementById("reset-history-wrapper"),
+          },
+          {
+            btn: document.getElementById("full-reset-history-btn"),
+            wrapper: document.getElementById("full-reset-history-wrapper"),
+          },
+        ];
+
+        actionItems.forEach((item) => {
+          const { btn, wrapper } = item;
+          let disabled = hasNoVote;
+
+          if (btn.id === "full-reset-history-btn") {
+            disabled = disabled && hasNoName;
+          }
+
+          if (btn && wrapper) {
+            btn.disabled = disabled;
+
+            if (disabled) {
+              btn.classList.add("opacity-50", "cursor-not-allowed");
+              btn.classList.remove(
+                "hover:bg-gray-700",
+                "hover:bg-green-700",
+                "hover:bg-red-700"
+              );
+              wrapper.classList.add("is-disabled-target"); // Active le trigger CSS du tooltip
+            } else {
+              btn.classList.remove("opacity-50", "cursor-not-allowed");
+              wrapper.classList.remove("is-disabled-target"); // Désactive le trigger CSS du tooltip
+
+              if (btn.id === "export-json-btn")
+                btn.classList.add("hover:bg-gray-700");
+              else if (btn.id === "export-csv-btn")
+                btn.classList.add("hover:bg-green-700");
+              else if (btn.id === "reset-history-btn")
+                btn.classList.add("hover:bg-orange-700");
+              else if (btn.id === "full-reset-history-btn")
+                btn.classList.add("hover:bg-red-700");
+            }
+          }
+        });
+      }
+
+      // --- Fonctions utilitaires ---
+      function convertToCSV(data) {
+        if (data.length === 0) return "";
+        const header = Object.keys(data[0]).join(",");
+        const rows = data.map((obj) =>
+          Object.values(obj)
+            .map((value) => {
+              let cell =
+                value === null || typeof value === "undefined"
+                  ? ""
+                  : String(value);
+              if (
+                cell.includes(",") ||
+                cell.includes('"') ||
+                cell.includes("\n")
+              ) {
+                cell = `"${cell.replace(/"/g, '""')}"`;
+              }
+              return cell;
+            })
+            .join(",")
+        );
+        return [header, ...rows].join("\n");
+      }
+
+      function downloadFile(content, fileName, mimeType) {
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      /**
+       * Enregistre un vote dans le tableau en mémoire, met à jour les scores ET sauvegarde les données.
+       */
+      function recordVote(winner, loser) {
+        const voteData = {
+          winner: winner,
+          loser: loser,
+          timestamp: new Date().toISOString(),
+        };
+
+        localVotes.push(voteData);
+
+        if (!scores[winner]) scores[winner] = { wins: 0, losses: 0, total: 0 };
+        if (!scores[loser]) scores[loser] = { wins: 0, losses: 0, total: 0 };
+
+        scores[winner].wins++;
+        scores[winner].total++;
+        scores[loser].losses++;
+        scores[loser].total++;
+
+        saveData();
+        updateVoteCountDisplay(); // Mise à jour du compteur avec la nouvelle fonction
+      }
+
+      function loadVotes() {
+        return localVotes;
+      }
+
+      /**
+       * Calcule et affiche le classement actuel dans la colonne de droite.
+       */
+      function updateLeaderboard() {
+        const sortKey = document.getElementById("sort-selector").value;
+
+        // Créer un tableau de classement en incluant tous les noms ayant un score (même ceux qui ne sont plus dans NAME_LIST)
+        const rankingArray = Object.keys(scores).map((name) => {
+          const wins = scores[name].wins;
+          const total = scores[name].total;
+          const losses = scores[name].losses;
+          const winRatio = total > 0 ? wins / total : 0;
+
+          return {
+            name: name,
+            wins: wins,
+            losses: losses,
+            total: total,
+            winRatio: winRatio,
+          };
+        });
+
+        // Trier uniquement les noms qui sont encore dans la liste NAME_LIST
+        // Ceci évite d'afficher des noms qui ont été remplacés par une nouvelle liste de noms importée
+        const currentNamesRanking = rankingArray.filter((item) =>
+          NAME_LIST.includes(item.name)
+        );
+
+        currentNamesRanking.sort((a, b) => {
+          let comparison = 0;
+
+          switch (sortKey) {
+            case "wins":
+              comparison = b.wins - a.wins;
+              if (comparison === 0) comparison = b.winRatio - a.winRatio;
+              break;
+            case "losses":
+              comparison = a.losses - b.losses;
+              if (comparison === 0) comparison = b.winRatio - a.winRatio;
+              break;
+            case "total":
+              comparison = b.total - a.total;
+              if (comparison === 0) comparison = b.winRatio - a.winRatio;
+              break;
+            case "winRatio":
+            default:
+              comparison = b.winRatio - a.winRatio;
+              if (comparison === 0) comparison = b.total - a.total;
+              break;
+          }
+          return comparison;
+        });
+
+        const leaderboardWrapper = document.getElementById(
+          "leaderboard-wrapper"
+        );
+        const leaderboardContainer = document.getElementById(
+          "leaderboard-content"
+        );
+        const footerText = document.getElementById("leaderboard-footer");
+
+        let leaderboardHtml = "";
+        let sortDescription = "";
+
+        if (currentNamesRanking.length === 0) {
+          leaderboardWrapper.style.display = "none";
+          sortDescription = "";
+        } else {
+          leaderboardWrapper.style.display = "block";
+          leaderboardHtml = currentNamesRanking
+            .map(
+              (item, index) => `
+                    <div
+                        class="flex items-center justify-between px-3 py-2 border-b border-gray-100 last:border-b-0 ${
+                          index < 3 ? "bg-sky-50 font-bold" : "hover:bg-gray-50"
+                        } rounded-lg transition-colors cursor-pointer"
+
+                        onmouseover="showTooltip(this, '${item.name.replace(
+                          /'/g,
+                          "\\'"
+                        )}')"
+                        onmouseout="hideTooltip()"
+                    >
+                        <span class="text-l w-1/12 text-gray-800">${
+                          index + 1
+                        }.</span>
+
+                        <!-- Le nom tronqué. Le tooltip affichera le nom complet au survol de la DIV parente. -->
+                        <span
+                            class="text-l w-8/12 truncate relative ${
+                              index < 3 ? "text-sky-800" : "text-gray-800"
+                            }"
+                        >
+                            ${item.name}
+                        </span>
+
+                        <span class="text-right w-3/12 text-sm flex flex-col items-end font-semibold">
+                            <span class="text-sky-600 text-sm">${(
+                              item.winRatio * 100
+                            ).toFixed(1)}%</span>
+                            <span class="text-xs text-gray-500">
+                                <span class="text-green-600">${
+                                  item.wins
+                                } V</span> /
+                                <span class="text-red-600">${
+                                  item.losses
+                                } D</span> |
+                                <span class="text-gray-600">${item.total}</span>
+                            </span>
+                        </span>
+                    </div>
+                `
+            )
+            .join("");
+
+          switch (sortKey) {
+            case "wins":
+              sortDescription =
+                "Classé par Victoires (et ratio pour départager).";
+              break;
+            case "losses":
+              sortDescription =
+                "Classé par Défaites (moins c'est mieux, et ratio pour départager).";
+              break;
+            case "total":
+              sortDescription = "Classé par Total des votes joués.";
+              break;
+            case "winRatio":
+            default:
+              sortDescription = "Classé par Ratio V/D (ratio = V / (V+D)).";
+              break;
+          }
+        }
+
+        leaderboardContainer.innerHTML = leaderboardHtml;
+        footerText.innerHTML = sortDescription;
+      }
+
+      function selectRandomPair() {
+        if (NAME_LIST.length < 2) return [];
+
+        let indexA = Math.floor(Math.random() * NAME_LIST.length);
+        let indexB;
+        do {
+          indexB = Math.floor(Math.random() * NAME_LIST.length);
+        } while (indexA === indexB);
+
+        return [NAME_LIST[indexA], NAME_LIST[indexB]];
+      }
+
+      function updateDisplay(pair) {
+        const initialStateWrapper = document.getElementById(
+          "initial-state-wrapper"
+        );
+        const matchWrapper = document.getElementById("match-wrapper");
+        const dataManagementWrapper = document.getElementById(
+          "data-management-wrapper"
+        );
+
+        if (pair.length < 2) {
+          initialStateWrapper.style.display = "block";
+          matchWrapper.style.display = "none";
+          dataManagementWrapper.style.display = "none";
+
+          return;
+        } else {
+          initialStateWrapper.style.display = "none";
+          matchWrapper.style.display = "flex";
+          dataManagementWrapper.style.display = "block";
+        }
+
+        const [nameA, nameB] = pair;
+
+        const buttonA = document.getElementById("name-a-btn");
+        const buttonB = document.getElementById("name-b-btn");
+
+        if (buttonA && buttonB) {
+          buttonA.textContent = nameA || "Liste trop courte";
+          buttonB.textContent = nameB || "Liste trop courte";
+
+          buttonA.onclick = () => handleVote(nameA, nameB);
+          buttonB.onclick = () => handleVote(nameB, nameA);
+
+          buttonA.classList.remove(
+            "bg-green-600",
+            "bg-red-600",
+            "scale-105",
+            "transition-transform"
+          );
+          buttonB.classList.remove(
+            "bg-green-600",
+            "bg-red-600",
+            "scale-105",
+            "transition-transform"
+          );
+
+          if (NAME_LIST.length < 2) {
+            buttonA.classList.remove("bg-sky-600", "hover:bg-sky-700");
+            buttonB.classList.remove("bg-sky-600", "hover:bg-sky-700");
+            buttonA.classList.add("bg-gray-400", "cursor-not-allowed");
+            buttonB.classList.add("bg-gray-400", "cursor-not-allowed");
+            buttonA.disabled = true;
+            buttonB.disabled = true;
+          } else {
+            buttonA.classList.add("bg-sky-600", "hover:bg-sky-700");
+            buttonB.classList.add("bg-sky-600", "hover:bg-sky-700");
+            buttonA.disabled = false;
+            buttonB.disabled = false;
+          }
+        } else {
+          console.error("Éléments de bouton non trouvés.");
+        }
+      }
+
+      function handleVote(winner, loser) {
+        const winnerBtn =
+          document.getElementById("name-a-btn").textContent === winner
+            ? document.getElementById("name-a-btn")
+            : document.getElementById("name-b-btn");
+        const loserBtn =
+          document.getElementById("name-a-btn").textContent === loser
+            ? document.getElementById("name-a-btn")
+            : document.getElementById("name-b-btn");
+
+        winnerBtn.classList.remove("bg-sky-600", "hover:bg-sky-700");
+        loserBtn.classList.remove("bg-sky-600", "hover:bg-sky-700");
+
+        winnerBtn.classList.add(
+          "bg-green-600",
+          "scale-105",
+          "transition-transform"
+        );
+        loserBtn.classList.add("bg-red-600");
+
+        document.getElementById("name-a-btn").disabled = true;
+        document.getElementById("name-b-btn").disabled = true;
+
+        recordVote(winner, loser);
+
+        updateLeaderboard();
+
+        setTimeout(() => {
+          updateDisplay(selectRandomPair());
+        }, 300);
+      }
+
+      // --- Fonctions de Gestion de l'Historique ---
+
+      function showResetModal() {
+        if (localVotes.length === 0) {
+          showNotification("L'historique des votes est déjà vide.", "warning");
+          return;
+        }
+
+        document.getElementById("reset-modal").classList.remove("hidden");
+      }
+
+      function closeResetModal() {
+        document.getElementById("reset-modal").classList.add("hidden");
+      }
+
+      function showFullResetModal() {
+        if (localVotes.length === 0 && NAME_LIST.length === 0) {
+          showNotification(
+            "L'historique des votes et la liste des noms sont déjà vides.",
+            "warning"
+          );
+          return;
+        }
+
+        document.getElementById("full-reset-modal").classList.remove("hidden");
+      }
+
+      function closeFullResetModal() {
+        document.getElementById("full-reset-modal").classList.add("hidden");
+      }
+
+      function executeResetHistory(full = false) {
+        localVotes = [];
+        localStorage.removeItem("bandNameVotes");
+
+        if (full) {
+          NAME_LIST = [];
+          localStorage.removeItem("bandNameList");
+          closeFullResetModal();
+        } else {
+          closeResetModal();
+        }
+
+        // La fonction loadData() est appelée pour garantir que les scores et le compteur de votes
+        // sont mis à jour à partir de l'historique vide.
+        loadData();
+        updateVoteCountDisplay(); // Mise à jour après réinitialisation
+        updateExportControls();
+        updateLeaderboard();
+        updateDisplay(selectRandomPair());
+
+        showNotification(
+          "Historique des votes et liste de noms réinitialisés.",
+          "success"
+        );
+      }
+
+      function executeFullResetHistory() {
+        executeResetHistory(true);
+      }
+
+      // --- Fonctions d'Importation ---
+
+      /**
+       * Réinitialise les votes et charge la nouvelle liste de noms.
+       */
+      function importNameList(namesArray) {
+        if (!namesArray || namesArray.length < 2) {
+          showNotification(
+            "Liste de noms invalide. Minimum 2 noms requis.",
+            "error"
+          );
+          return;
+        }
+
+        NAME_LIST.splice(0, NAME_LIST.length, ...namesArray);
+
+        // Vider les votes et le localStorage pour garantir la réinitialisation de l'historique.
+        localVotes = [];
+        localStorage.removeItem("bandNameVotes");
+
+        initializeScores();
+
+        updateVoteCountDisplay(); // CORRECTION: Met à jour l'affichage à 0 vote
+        updateExportControls();
+        updateLeaderboard();
+        updateDisplay(selectRandomPair());
+        saveData();
+        showNotification(
+          `${NAME_LIST.length} noms importés! L'historique des votes a été réinitialisé.`,
+          "success"
+        );
+      }
+
+      /**
+       * Gère l'importation de noms depuis un fichier texte ou CSV/TSV (ex: export Google Sheets).
+       * Utilise PapaParse pour gérer les différents délimiteurs (virgule, tabulation, etc.).
+       */
+      function handleNameListImportFile(file) {
+        if (typeof Papa === "undefined" || !Papa.parse) {
+          showNotification(
+            "Erreur: PapaParse n'est pas chargé pour lire les données CSV/TSV.",
+            "error"
+          );
+          return;
+        }
+
+        Papa.parse(file, {
+          header: false, // On suppose que le nom est la première (et unique) colonne
+          skipEmptyLines: true,
+          complete: function (results) {
+            // Filtrer les erreurs non critiques (UndetectableDelimiter est commun pour les TXT)
+            const criticalErrors = results.errors.filter(
+              (err) => err.code !== "UndetectableDelimiter"
+            );
+
+            if (criticalErrors.length > 0) {
+              console.error(
+                "Erreurs de parsing PapaParse (critiques):",
+                criticalErrors
+              );
+              showNotification(
+                "Erreur de parsing critique. Vérifie le format du fichier.",
+                "error"
+              );
+              return;
+            }
+
+            if (results.errors.length > 0) {
+              console.warn(
+                "Avertissement de parsing PapaParse (Délimiteur non détecté, mais le processus continue) :",
+                results.errors
+              );
+            }
+
+            // Extraction du premier élément de chaque ligne (le nom)
+            const names = results.data
+              .map((row) => {
+                let name = null;
+
+                if (Array.isArray(row) && row.length > 0) {
+                  name = String(row[0]).trim();
+                }
+
+                // Gérer le cas où PapaParse retourne [[ligne]] pour un fichier TXT brut
+                if (
+                  !name &&
+                  Array.isArray(row) &&
+                  row.length === 1 &&
+                  String(row[0]).trim().length > 0
+                ) {
+                  name = String(row[0]).trim();
+                }
+
+                return name;
+              })
+              .filter((name) => name && name.length > 0);
+
+            const uniqueNames = [...new Set(names)];
+
+            importNameList(uniqueNames);
+          },
+          error: function (error) {
+            showNotification(
+              `Erreur de lecture du fichier: ${error.message}`,
+              "error"
+            );
+          },
+        });
+      }
+
+      function importVoteHistory(votesArray) {
+        if (
+          !votesArray ||
+          !Array.isArray(votesArray) ||
+          votesArray.length === 0
+        ) {
+          showNotification(
+            "Aucun vote valide trouvé dans le fichier importé.",
+            "error"
+          );
+          return;
+        }
+
+        const addedCount = votesArray.length;
+        localVotes = [...localVotes, ...votesArray];
+
+        // Recharger les données pour mettre à jour les scores à partir du nouvel historique de votes complet
+        loadData();
+        saveData();
+
+        updateVoteCountDisplay(); // Mise à jour de l'affichage du compteur
+        updateExportControls();
+        updateLeaderboard();
+        updateDisplay(selectRandomPair());
+        showNotification(
+          `${addedCount} votes ajoutés à l'historique! Total: ${localVotes.length} votes.`,
+          "success"
+        );
+      }
+
+      function handleHistoryImportFile(file) {
+        const fileName = file.name.toLowerCase();
+        const isJson = fileName.endsWith(".json");
+        const isCsv = fileName.endsWith(".csv");
+
+        if (!isJson && !isCsv) {
+          showNotification(
+            "Format de fichier non supporté. Choisis un fichier JSON ou CSV.",
+            "error"
+          );
+          return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const content = e.target.result;
+
+          if (isJson) {
+            try {
+              const importedVotes = JSON.parse(content);
+
+              if (
+                !Array.isArray(importedVotes) ||
+                importedVotes.some(
+                  (v) =>
+                    !v ||
+                    typeof v.winner !== "string" ||
+                    typeof v.loser !== "string"
+                )
+              ) {
+                throw new Error(
+                  "Le format JSON attendu est Array<{winner, loser}>."
+                );
+              }
+              importVoteHistory(importedVotes);
+            } catch (error) {
+              showNotification(
+                `Erreur d'importation JSON: ${error.message}`,
+                "error"
+              );
+            }
+          } else if (isCsv) {
+            if (typeof Papa === "undefined" || !Papa.parse) {
+              showNotification(
+                "Erreur: PapaParse n'est pas chargé pour lire le CSV.",
+                "error"
+              );
+              return;
+            }
+
+            Papa.parse(content, {
+              header: true,
+              skipEmptyLines: true,
+              complete: function (results) {
+                if (results.errors.length > 0) {
+                  console.error("Erreurs de parsing CSV:", results.errors);
+                  showNotification(
+                    "Erreur lors du parsing CSV. Vérifie le format et les en-têtes.",
+                    "error"
+                  );
+                  return;
+                }
+
+                const csvVotes = results.data
+                  .map((row) => {
+                    const winner = row.winner;
+                    const loser = row.loser;
+
+                    if (winner && loser) {
+                      return {
+                        winner: String(winner).trim(),
+                        loser: String(loser).trim(),
+                        timestamp: row.timestamp || new Date().toISOString(),
+                      };
+                    }
+                    return null;
+                  })
+                  .filter((v) => v !== null);
+
+                if (csvVotes.length === 0) {
+                  showNotification(
+                    "Aucun vote valide trouvé dans le fichier CSV. Assure-toi d'avoir les colonnes 'winner' et 'loser'.",
+                    "error"
+                  );
+                } else {
+                  importVoteHistory(csvVotes);
+                }
+              },
+            });
+          }
+        };
+        reader.onerror = function () {
+          showNotification(
+            "Erreur lors de la lecture du fichier d'historique.",
+            "error"
+          );
+        };
+
+        reader.readAsText(file);
+      }
+
+      // --- Fonctions d'exportation ---
+
+      function downloadJSONData() {
+        if (localVotes.length === 0) return;
+
+        const votes = loadVotes();
+        const jsonContent = JSON.stringify(votes, null, 2);
+        downloadFile(jsonContent, "votes_export.json", "application/json");
+        showNotification(`${votes.length} votes exportés en JSON !`, "success");
+      }
+
+      function downloadCSVData() {
+        if (localVotes.length === 0) return;
+
+        const votes = loadVotes();
+        let csvContent;
+        if (typeof Papa !== "undefined" && Papa.unparse) {
+          csvContent = Papa.unparse(votes);
+        } else {
+          csvContent = convertToCSV(votes);
+        }
+
+        downloadFile(csvContent, "votes_export.csv", "text/csv;charset=utf-8;");
+        showNotification(`${votes.length} votes exportés en CSV !`, "success");
+      }
+
+      // --- Gestion des notifications/messages d'erreur ---
+
+      function showNotification(message, type = "info") {
+        const notificationEl = document.getElementById("notification-box");
+        notificationEl.textContent = message;
+
+        notificationEl.classList.remove(
+          "bg-cyan-500",
+          "bg-green-500",
+          "bg-yellow-500",
+          "bg-red-500"
+        );
+
+        let colorClass;
+        switch (type) {
+          case "success":
+            colorClass = "bg-green-500";
+            break;
+          case "error":
+            colorClass = "bg-red-500";
+            break;
+          case "warning":
+            colorClass = "bg-yellow-500";
+            break;
+          case "info":
+          default:
+            colorClass = "bg-cyan-500";
+            break;
+        }
+
+        notificationEl.classList.add(colorClass);
+        notificationEl.classList.remove("hidden");
+
+        setTimeout(() => {
+          notificationEl.classList.add("hidden");
+        }, 5000);
+      }
+
+      // --- Initialisation de l'application ---
+
+      function setupApp() {
+        // 1. Charger les données (noms et votes) depuis localStorage
+        loadData();
+
+        // 2. Lier les événements
+        document.getElementById("export-json-btn").onclick = downloadJSONData;
+        document.getElementById("export-csv-btn").onclick = downloadCSVData;
+
+        const sortSelector = document.getElementById("sort-selector");
+        if (sortSelector) {
+          sortSelector.onchange = updateLeaderboard;
+        }
+
+        // Lier les gestionnaires d'importation
+        document.getElementById("import-names-file").onchange = (e) => {
+          if (e.target.files.length > 0)
+            handleNameListImportFile(e.target.files[0]);
+          e.target.value = "";
+        };
+        document.getElementById("import-history-file").onchange = (e) => {
+          if (e.target.files.length > 0)
+            handleHistoryImportFile(e.target.files[0]);
+          e.target.value = "";
+        };
+
+        // Lier les boutons de réinitialisation/confirmation
+        document.getElementById("reset-history-btn").onclick = showResetModal;
+        document.getElementById("cancel-reset-btn").onclick = closeResetModal;
+        document.getElementById("confirm-reset-btn").onclick =
+          executeResetHistory;
+
+        document.getElementById("full-reset-history-btn").onclick =
+          showFullResetModal;
+        document.getElementById("cancel-full-reset-btn").onclick =
+          closeFullResetModal;
+        document.getElementById("confirm-full-reset-btn").onclick =
+          executeFullResetHistory;
+
+        // 3. Démarrer l'affichage et les contrôles
+        updateVoteCountDisplay(); // S'assurer que le compteur est correct au démarrage
+        updateExportControls();
+        updateLeaderboard();
+        updateDisplay(selectRandomPair());
+
+        if (localVotes.length > 0) {
+          if (localVotes.length === 1) {
+            showNotification(`Re ! 1 vote précédent a été chargé.`, "info");
+          } else {
+            showNotification(
+              `Re ! ${localVotes.length} votes précédents ont été chargés.`,
+              "info"
+            );
+          }
+        }
+      }
+
+      window.onload = setupApp;
+    </script>
+  </body>
+</html>
